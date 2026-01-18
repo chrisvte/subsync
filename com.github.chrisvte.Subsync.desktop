@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Subsync
+Comment=Subtitle Speech Synchronizer (Linux Port)
+Exec=subsync
+Icon=com.github.chrisvte.Subsync
+Categories=AudioVideo;Video;
+Terminal=false

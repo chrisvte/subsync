@@ -1,0 +1,85 @@
+app-id: com.github.chrisvte.Subsync
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: subsync
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --filesystem=home
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-download
+modules:
+  # Python 3.13
+  - name: python3.13
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app --enable-shared
+      - make -j$(nproc)
+      - make install
+    sources:
+      - type: archive
+        url: https://www.python.org/ftp/python/3.13.1/Python-3.13.1.tar.xz
+        sha256: 9cf9427bee9e2242e3877dd0f6b641c1853ca461f39d6503ce260a59c80bf0d9
+
+  # SWIG (required for sphinxbase bindings)
+  - name: swig
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://sourceforge.net/projects/swig/files/swig/swig-4.3.0/swig-4.3.0.tar.gz
+        sha256: f7203ef796f61af986c70c05816236cbd0d31b7aa9631e5ab53020ab7804aa9e
+
+  # sphinxbase
+  - name: sphinxbase
+    buildsystem: simple
+    build-commands:
+      - ./autogen.sh
+      - ./configure --prefix=/app --without-python
+      - make -j$(nproc)
+      - make install
+    sources:
+      - type: git
+        url: https://github.com/cmusphinx/sphinxbase.git
+        branch: master
+
+  # pocketsphinx
+  - name: pocketsphinx
+    buildsystem: simple
+    build-commands:
+      - ./autogen.sh
+      - ./configure --prefix=/app --without-python
+      - make -j$(nproc)
+      - make install
+    sources:
+      - type: git
+        url: https://github.com/cmusphinx/pocketsphinx.git
+        branch: master
+
+  # Python dependencies
+  - name: python-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-deps certifi
+      - pip3 install --prefix=/app --no-deps pysubs2>=0.2.4
+      - pip3 install --prefix=/app --no-deps pycryptodome>=3.9
+      - pip3 install --prefix=/app --no-deps PyYAML
+      - pip3 install --prefix=/app --no-deps pybind11>=2.4
+      - pip3 install --prefix=/app --no-deps requests>=2.0
+      - pip3 install --prefix=/app --no-deps wxPython>=4.0
+    sources: []
+
+  # Subsync application
+  - name: subsync
+    buildsystem: simple
+    build-commands:
+      - export PKG_CONFIG_PATH=/app/lib/pkgconfig:$PKG_CONFIG_PATH
+      - python3 setup.py build_ext --inplace
+      - python3 setup.py install --prefix=/app --skip-build
+      - install -Dm644 subsync/img/icon.png /app/share/icons/hicolor/256x256/apps/com.github.chrisvte.Subsync.png
+      - install -Dm644 com.github.chrisvte.Subsync.desktop /app/share/applications/com.github.chrisvte.Subsync.desktop
+    sources:
+      - type: dir
+        path: .
