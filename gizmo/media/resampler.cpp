@@ -34,8 +34,9 @@ void Resampler::connectOutput(shared_ptr<AVOutput> output,
 
 	m_outFrame = av_frame_alloc();
 	m_outFrame->format = format.sampleFormat;
-	m_outFrame->channels = format.channelsNo;
-	m_outFrame->channel_layout = format.channelLayout;
+	// m_outFrame->channels = format.channelsNo; // Deprecated
+    av_channel_layout_from_mask(&m_outFrame->ch_layout, format.channelLayout);
+    m_outFrame->ch_layout.nb_channels = format.channelsNo;
 	m_outFrame->sample_rate = format.sampleRate;
 	m_outFrame->nb_samples = bufferSize;
 
@@ -83,16 +84,24 @@ static vector<double> makeMixMap(const AudioFormat &out, const AudioFormat &in,
 
 	for (const auto &ch : channelsMap)
 	{
-		int i = av_get_channel_layout_channel_index(
-				in.channelLayout,
-				get<0>(ch.first));
 
-		int o = av_get_channel_layout_channel_index(
-				out.channelLayout,
-				get<1>(ch.first));
+        AVChannelLayout inLayout, outLayout;
+        av_channel_layout_from_mask(&inLayout, in.channelLayout);
+        av_channel_layout_from_mask(&outLayout, out.channelLayout);
+
+		int i = av_channel_layout_index_from_channel(
+				&inLayout,
+				(AVChannel)__builtin_ctzll(get<0>(ch.first)));
+
+		int o = av_channel_layout_index_from_channel(
+				&outLayout,
+				(AVChannel)__builtin_ctzll(get<1>(ch.first)));
 
 		if (i >= 0 && o >= 0)
 			mixMap[i * out.channelsNo + o] = ch.second;
+            
+        // av_channel_layout_uninit(&inLayout); // Not needed for mask
+        // av_channel_layout_uninit(&outLayout);
 	}
 
 	return mixMap;
@@ -103,10 +112,19 @@ void Resampler::initSwrContext(const AudioFormat &out, const AudioFormat &in)
 	if (swr_is_initialized(m_swr))
 		swr_close(m_swr);
 
-	m_swr = swr_alloc_set_opts(m_swr,
-			out.channelLayout, out.sampleFormat, out.sampleRate,
-			in.channelLayout,  in.sampleFormat,  in.sampleRate,
-			0, NULL);
+
+    AVChannelLayout inLayout, outLayout;
+    av_channel_layout_from_mask(&inLayout, in.channelLayout);
+    av_channel_layout_from_mask(&outLayout, out.channelLayout);
+
+	if (swr_alloc_set_opts2(&m_swr,
+			&outLayout, out.sampleFormat, out.sampleRate,
+			&inLayout,  in.sampleFormat,  in.sampleRate,
+			0, NULL) < 0)
+    {
+        // Error handling if needed, or m_swr will be null/invalid?
+        // swr_alloc_set_opts2 returns int.
+    }
 
 	if (m_swr == NULL)
 		throw EXCEPTION("can't initialize resampler context")

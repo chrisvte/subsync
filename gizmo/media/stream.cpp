@@ -144,11 +144,16 @@ AudioFormat::AudioFormat(const AVCodecContext *ctx)
 	{
 		sampleFormat  = ctx->sample_fmt;
 		sampleRate    = ctx->sample_rate;
-		channelsNo    = ctx->channels;
-		channelLayout = ctx->channel_layout;
+		channelsNo    = ctx->ch_layout.nb_channels;
+		channelLayout = ctx->ch_layout.u.mask;
 
-		if (channelLayout == 0)
-			channelLayout = av_get_default_channel_layout(ctx->channels);
+		if (channelLayout == 0 && channelsNo > 0)
+            {
+                // Create a temporary layout to get default mask
+                AVChannelLayout layout;
+                av_channel_layout_default(&layout, channelsNo);
+                channelLayout = layout.u.mask;
+            }
 	}
 }
 
@@ -163,11 +168,15 @@ AudioFormat::AudioFormat(const AVFrame *frame)
 	{
 		sampleFormat  = (AVSampleFormat) frame->format;
 		sampleRate    = frame->sample_rate;
-		channelsNo    = frame->channels;
-		channelLayout = frame->channel_layout;
+		channelsNo    = frame->ch_layout.nb_channels;
+		channelLayout = frame->ch_layout.u.mask;
 
-		if (channelLayout == 0)
-			channelLayout = av_get_default_channel_layout(frame->channels);
+		if (channelLayout == 0 && channelsNo > 0)
+        {
+            AVChannelLayout layout;
+            av_channel_layout_default(&layout, channelsNo);
+            channelLayout = layout.u.mask;
+        }
 	}
 }
 
@@ -226,12 +235,19 @@ string AudioFormat::toString() const
 
 const char *AudioFormat::getChannelName(uint64_t id)
 {
-	return av_get_channel_name(id);
+	static char buf[256];
+    // This is not thread safe but original returned static string
+    if (av_channel_name(buf, sizeof(buf), (AVChannel)__builtin_ctzll(id)) < 0)
+        return NULL;
+    return buf;
 }
 
 const char *AudioFormat::getChannelDescription(uint64_t id)
 {
-	return av_get_channel_description(id);
+	static char buf[256];
+    if (av_channel_description(buf, sizeof(buf), (AVChannel)__builtin_ctzll(id)) < 0)
+        return NULL;
+    return buf;
 }
 
 uint64_t AudioFormat::getChannelIdByName(const char *name)
@@ -239,8 +255,8 @@ uint64_t AudioFormat::getChannelIdByName(const char *name)
 	for (int i = 0; i <= 63; i++)
 	{
 		const uint64_t id = 1ull << i;
-		const char *n = av_get_channel_name(id);
-		if (n && strcmp(name, n) == 0)
+        char buf[256];
+		if (av_channel_name(buf, sizeof(buf), (AVChannel)i) >= 0 && strcmp(name, buf) == 0)
 			return id;
 	}
 	return 0;
